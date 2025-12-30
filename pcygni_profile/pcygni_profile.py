@@ -54,9 +54,9 @@ class PcygniCalculator(object):
     * calc_profile_Flam
     * show_line_profile
     """
-    def __init__(self, t=3000 * units.s, vmax=0.01 * csts.c,
-                 vphot=0.001 * csts.c, tauref=1, vref=5e7 * units.cm/units.s,
-                 ve=5e7 * units.cm/units.s, lam0=1215.7 * units.AA,
+    def __init__(self, t=3000, vmax=0.01 * csts.c.cgs.value * 1e-5,
+                 vphot=0.001 * csts.c.cgs.value * 1e-5, tauref=1, vref=500,
+                 ve=500, lam0=1215.7,
                  vdet_min=None, vdet_max=None):
         """
         Parameters
@@ -66,39 +66,46 @@ class PcygniCalculator(object):
             velocity this sets the length scale of the ejecta (default 3000 s)
         vmax : scalar astropy.units.Quantity
             maximum ejecta velocity; with the time since explosion, this sets
-            the outer radius of the ejecta (default 1 per cent speed of light)
+            the outer radius of the ejecta (default 1 per cent speed of light);
+            unit in km/s
         vphot : scalar astropy.units.Quantity
             photospheric velocity; with the time since explosion, this sets the
             radius of the photosphere, i.e. of the inner boundary (default 0.1
-            per cent of speed of light)
+            per cent of speed of light);
+            unit in km/s
         tauref : float
             line optical depth at a reference velocity (vref) in the ejecta;
             this sets the strength of the line transition (default 1)
         vref : scalar astropy.units.Quantity
             reference velocity; needed in the assumed density stratification
             and sets the ejecta location where the reference line optical depth
-            is measured (default 5e7 cm/s)
+            is measured (default 5e7 cm/s);
+            unit in km/s
         ve : scalar astropy.units.Quantity
             second parameter used in the assumed density stratification
-            (defautl 5e7 cm/s)
+            (defautl 5e7 cm/s);
+            unit in km/s
         lam0 : scalar astropy.units.Quantity
-            rest frame wavelength of the line transition (default 1215.7 A)
+            rest frame wavelength of the line transition (default 1215.7 A);
+            unit in Angstrom
         vdet_min : None or scalar astropy.units.Quantity
             lower/inner location of the line formation region; enables
             detachment of line formation region; if None, will be set to vphot
-            (default None)
+            (default None);
+            unit in km/s
         vdet_max : None or scalar astropy.units.Quantity
             upper/outer location of the line formation region; enables
             detachment of line formation region; if None, will be set to vmax
-            (default None)
+            (default None);
+            unit in km/s
         """
 
         # ensure that the calculator works with the correct units
-        self._t = t.to("s").value
-        self._vmax = vmax.to("cm/s").value
-        self._vphot = vphot.to("cm/s").value
-        self._ve = ve.to("cm/s").value
-        self._vref = vref.to("cm/s").value
+        self._t = t
+        self._vmax = vmax * 1e5  # convert to cm/s
+        self._vphot = vphot * 1e5  # convert to cm/s
+        self._ve = ve * 1e5  # convert to cm/s
+        self._vref = vref * 1e5  # convert to cm/s
 
         # spatial extent of the ejecta
         self._rmax = self._t * self._vmax
@@ -106,7 +113,7 @@ class PcygniCalculator(object):
         self._zmax = self._rmax
 
         # CMF natural wavelength and frequency of the line
-        self._lam0 = lam0.to("cm").value
+        self._lam0 = lam0 * 1e-8  # convert to cm
         self._nu0 = csts.c.cgs.value / self._lam0
 
         # determine the maximum width of the profile
@@ -123,13 +130,13 @@ class PcygniCalculator(object):
         self._Ip = 1
 
         if vdet_min is None:
-            vdet_min = self.vphot
+            vdet_min = self._vphot
         else:
-            vdet_min = vdet_min.to("cm/s").value
+            vdet_min = vdet_min * 1e5  # convert to cm/s
         if vdet_max is None:
-            vdet_max = self.vmax
+            vdet_max = self._vmax
         else:
-            vdet_max = vdet_max.to("cm/s").value
+            vdet_max = vdet_max * 1e5  # convert to cm/s
 
         self._vdet_min = vdet_min
         self._vdet_max = vdet_max
@@ -525,7 +532,7 @@ class PcygniCalculator(object):
             #nui=nui.to("Hz").value
             Fnu.append(self._calc_line_flux(nui, mode=mode))
 
-        return nu * units.Hz, np.array(Fnu)
+        return nu, np.array(Fnu)
 
     def calc_profile_Fnu(self, npoints=100, mode="both", nu_grid=None):
         """Calculate normalized line profile in terms of F_nu
@@ -578,17 +585,21 @@ class PcygniCalculator(object):
         """
 
         if lam_grid is not None:
-            nu_grid = csts.c.cgs.value / np.array(lam_grid.to("cm").value)[::-1]
+            lam_grid_cm=lam_grid*1e-8  # convert to cm
+            nu_grid = csts.c.cgs.value / np.array(lam_grid_cm)[::-1]
+            #print(np.max(nu_grid), np.min(nu_grid))
             #nu_grid = lam_grid.to("Hz", equivalencies=units.spectral())[::-1]
         else:
             nu_grid = None
 
         nu, Fnu = self._calc_line_profile_base(self.nu_min, self.nu_max,
                                                npoints=npoints, mode=mode, nu_grid=nu_grid)
-        lam = nu.to("AA", equivalencies=units.spectral())[::-1]
-        cont = (Fnu[0] * np.ones(len(Fnu)) * nu.to("Hz").value**2 /
+        #lam = nu.to("AA", equivalencies=units.spectral())[::-1]
+        lam = (csts.c.cgs.value / nu)[::-1]  # in cm
+        lam *= 1e8  # convert to Angstrom
+        cont = (Fnu[0] * np.ones(len(Fnu)) * nu**2 /
                 csts.c.cgs.value)
-        F_lambda_normed = (Fnu * nu.to("Hz").value**2 /
+        F_lambda_normed = (Fnu * nu**2 /
                            csts.c.cgs.value / cont)[::-1]
 
         return lam, F_lambda_normed
@@ -622,14 +633,14 @@ class PcygniCalculator(object):
 
         if vs_nu:
             x, y = self.calc_profile_Fnu(npoints=npoints, mode="both")
-            x = x.to("Hz")
+            x = x
             if include_abs:
                 yabs = self.calc_profile_Fnu(npoints=npoints, mode="abs")[-1]
             if include_emit:
                 yemit = self.calc_profile_Fnu(npoints=npoints, mode="emit")[-1]
         else:
             x, y = self.calc_profile_Flam(npoints=npoints, mode="both")
-            x = x.to("AA")
+            #x = x * 1e8  # convert to Angstrom
             if include_abs:
                 yabs = self.calc_profile_Flam(npoints=npoints, mode="abs")[-1]
             if include_emit:
@@ -659,7 +670,7 @@ class PcygniCalculator(object):
             ax.set_xlabel(r"$\lambda$ [$\AA$]")
             ax.set_ylabel(r"$F_{\lambda}/F_{\lambda}^{\mathrm{phot}}$")
 
-        ax.set_xlim([np.min(x.value), np.max(x.value)])
+        ax.set_xlim([np.min(x), np.max(x)])
 
         return fig
 
