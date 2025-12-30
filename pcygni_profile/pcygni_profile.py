@@ -490,7 +490,7 @@ class PcygniCalculator(object):
         return Fnu
 
     def _calc_line_profile_base(self, nu_min, nu_max, npoints=100,
-                                mode="both"):
+                                mode="both", nu_grid=None):
         """
         Calculate the full line profile between the limits nu_min and nu_max in
         terms of F_nu.
@@ -514,17 +514,20 @@ class PcygniCalculator(object):
         Fnu : np.ndarray
             emitted flux F_nu
         """
-
-        nu = np.linspace(nu_min, nu_max, npoints)
+        if nu_grid is not None:
+            nu = nu_grid
+        else:
+            nu = np.linspace(nu_min, nu_max, npoints)
 
         Fnu = []
 
         for nui in nu:
+            #nui=nui.to("Hz").value
             Fnu.append(self._calc_line_flux(nui, mode=mode))
 
         return nu * units.Hz, np.array(Fnu)
 
-    def calc_profile_Fnu(self, npoints=100, mode="both"):
+    def calc_profile_Fnu(self, npoints=100, mode="both", nu_grid=None):
         """Calculate normalized line profile in terms of F_nu
 
         Parameters
@@ -545,12 +548,12 @@ class PcygniCalculator(object):
         """
 
         nu, Fnu = self._calc_line_profile_base(self.nu_min, self.nu_max,
-                                               npoints=npoints, mode=mode)
+                                               npoints=npoints, mode=mode, nu_grid=nu_grid)
 
         Fnu_normed = Fnu / Fnu[0]
         return nu, Fnu_normed
 
-    def calc_profile_Flam(self, npoints=100, mode="both"):
+    def calc_profile_Flam(self, npoints=100, mode="both", lam_grid=None):
         """Calculate normalized line profile in terms of F_lambda
 
         Parameters
@@ -574,8 +577,14 @@ class PcygniCalculator(object):
             continuum flux
         """
 
+        if lam_grid is not None:
+            nu_grid = csts.c.cgs.value / np.array(lam_grid.to("cm").value)[::-1]
+            #nu_grid = lam_grid.to("Hz", equivalencies=units.spectral())[::-1]
+        else:
+            nu_grid = None
+
         nu, Fnu = self._calc_line_profile_base(self.nu_min, self.nu_max,
-                                               npoints=npoints, mode=mode)
+                                               npoints=npoints, mode=mode, nu_grid=nu_grid)
         lam = nu.to("AA", equivalencies=units.spectral())[::-1]
         cont = (Fnu[0] * np.ones(len(Fnu)) * nu.to("Hz").value**2 /
                 csts.c.cgs.value)
